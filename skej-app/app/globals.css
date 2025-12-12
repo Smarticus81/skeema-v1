@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 30 20% 98%;
+  --foreground: 30 10% 10%;
+  --primary: 159 45% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 30 15% 92%;
+  --secondary-foreground: 30 10% 20%;
+  --accent: 159 35% 88%;
+  --accent-foreground: 159 45% 25%;
+  --muted: 30 15% 95%;
+  --muted-foreground: 30 10% 45%;
+  --border: 30 15% 88%;
+  --input: 30 15% 88%;
+  --ring: 159 45% 35%;
+  --radius: 0.75rem;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted/30;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/20 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/30;
+}
