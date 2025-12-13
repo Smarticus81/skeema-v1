@@ -69,6 +69,7 @@ export function ImportDialog({ isOpen, onClose, onImportSuccess }: ImportDialogP
         frequency: row["Frequency"] || "",
         due: convertExcelDate(row["Due Date"] || row["Due"]),
         status: row["Status"] || "Not Started",
+        writer: row["Writer"] || row["Owner"] || row["Author"] || "",
       }));
 
       console.log("Mapped items with dates:", items.slice(0, 2));
