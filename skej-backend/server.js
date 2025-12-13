@@ -47,6 +47,20 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 
+// Normalize duplicate slashes in URLs (e.g. "/api//schedule") to avoid 404s when
+// NEXT_PUBLIC_API_URL accidentally includes a trailing slash.
+app.use((req, _res, next) => {
+  const url = req.url || '';
+  const qIndex = url.indexOf('?');
+  const path = qIndex >= 0 ? url.slice(0, qIndex) : url;
+  const query = qIndex >= 0 ? url.slice(qIndex) : '';
+  const normalizedPath = path.replace(/\/{2,}/g, '/');
+  if (normalizedPath !== path) {
+    req.url = normalizedPath + query;
+  }
+  next();
+});
+
 // Helper Functions
 async function getTargets(targets, supabase) {
   if (!supabase) return [];
