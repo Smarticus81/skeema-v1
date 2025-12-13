@@ -3,12 +3,15 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const Anthropic = require('@anthropic-ai/sdk');
+const OpenAI = require('openai');
 const { addYears, addMonths, parseISO, format, isValid, subDays, addDays, isBefore, isAfter } = require('date-fns');
 
 const app = express();
 
 const PORT = process.env.PORT || 3000;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -25,6 +28,11 @@ const anthropic = new Anthropic({
   apiKey: ANTHROPIC_API_KEY || 'dummy_key',
 });
 
+// Initialize OpenAI Client (optional fallback if Anthropic is unavailable)
+const openai = OPENAI_API_KEY
+  ? new OpenAI({ apiKey: OPENAI_API_KEY })
+  : null;
+
 let stats = {
   totalRequests: 0,
   successfulRequests: 0,
@@ -33,6 +41,119 @@ let stats = {
   requestsByModel: {},
   errors: []
 };
+
+function isAnthropicCreditError(err) {
+  const msg = (err && err.message) ? String(err.message) : '';
+  return msg.toLowerCase().includes('credit balance is too low')
+    || msg.toLowerCase().includes('insufficient credits')
+    || msg.toLowerCase().includes('plans & billing');
+}
+
+function isAuthOrCreditsError(err) {
+  const msg = (err && err.message) ? String(err.message) : '';
+  return isAnthropicCreditError(err)
+    || msg.toLowerCase().includes('invalid api key')
+    || msg.toLowerCase().includes('unauthorized')
+    || msg.toLowerCase().includes('401');
+}
+
+function anthropicToolsToOpenAITools(tools) {
+  if (!Array.isArray(tools) || tools.length === 0) return [];
+  return tools
+    .filter(t => t && typeof t.name === 'string')
+    .map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description || '',
+        parameters: t.input_schema || { type: 'object', properties: {} },
+      }
+    }));
+}
+
+function mapRequestedModelToOpenAI(model) {
+  const m = (model || '').trim();
+  // If caller already passes an OpenAI model id, use it.
+  if (m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3')) return m;
+  return OPENAI_DEFAULT_MODEL;
+}
+
+async function runOpenAIWithTools({ model, max_tokens, temperature, system, messages, tools }) {
+  if (!openai) {
+    const e = new Error('OPENAI_API_KEY not configured');
+    e.code = 'OPENAI_NOT_CONFIGURED';
+    throw e;
+  }
+
+  const openAITools = anthropicToolsToOpenAITools(tools);
+  const usedModel = mapRequestedModelToOpenAI(model);
+
+  let currentMessages = [
+    ...(system ? [{ role: 'system', content: system }] : []),
+    ...(Array.isArray(messages) ? messages : []),
+  ];
+
+  let turnCount = 0;
+  while (turnCount < 10) {
+    turnCount++;
+
+    const completion = await openai.chat.completions.create({
+      model: usedModel,
+      messages: currentMessages,
+      tools: openAITools.length ? openAITools : undefined,
+      tool_choice: openAITools.length ? 'auto' : undefined,
+      temperature: typeof temperature === 'number' ? temperature : 0.7,
+      max_tokens: typeof max_tokens === 'number' ? max_tokens : 4096,
+    });
+
+    const choice = completion.choices && completion.choices[0];
+    const msg = choice && choice.message ? choice.message : null;
+    const toolCalls = msg && Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+
+    if (toolCalls.length) {
+      // Add the assistant message with tool calls.
+      currentMessages.push({
+        role: 'assistant',
+        content: msg.content || '',
+        tool_calls: toolCalls,
+      });
+
+      // Execute tools and add tool results.
+      for (const tc of toolCalls) {
+        const fn = tc.function || {};
+        const name = fn.name;
+        let input = {};
+        try {
+          input = fn.arguments ? JSON.parse(fn.arguments) : {};
+        } catch {
+          input = {};
+        }
+        const result = await executeTool(name, input);
+        currentMessages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result),
+        });
+      }
+      continue;
+    }
+
+    const text = (msg && msg.content) ? msg.content : '';
+    return {
+      model: usedModel,
+      turnCount,
+      content: [{ type: 'text', text }],
+      stop_reason: 'end_turn',
+    };
+  }
+
+  return {
+    model: mapRequestedModelToOpenAI(model),
+    turnCount: 10,
+    content: [{ type: 'text', text: 'I reached the maximum tool-call depth.' }],
+    stop_reason: 'max_turns',
+  };
+}
 
 // CORS configuration for production
 const corsOptions = {
@@ -507,19 +628,21 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     apiKeyConfigured: !!ANTHROPIC_API_KEY,
+    openaiConfigured: !!OPENAI_API_KEY,
     supabaseConnected: !!supabase,
   });
 });
 
 app.get('/api/models', (req, res) => {
-  res.json({
-    models: [
-      { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', recommended: true },
-      { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5' },
-      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)' },
-      { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet' },
-    ]
-  });
+  const models = [
+    // Anthropic (may be unavailable if credits are depleted)
+    { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet' },
+    { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
+    // OpenAI fallback
+    { id: 'gpt-4o-mini', name: 'GPT‑4o mini', recommended: !!OPENAI_API_KEY },
+    { id: 'gpt-4o', name: 'GPT‑4o' },
+  ];
+  res.json({ models });
 });
 
 app.get('/api/stats', (req, res) => res.json(stats));
@@ -661,14 +784,27 @@ app.post('/api/claude', async (req, res) => {
     while (!isComplete && turnCount < 10) {
       turnCount++;
       
-      const apiResponse = await anthropic.messages.create({
-      model,
-      max_tokens: max_tokens || 4096,
-        messages: currentMessages,
-        system,
-        temperature,
-        tools
-      });
+      let apiResponse;
+      try {
+        apiResponse = await anthropic.messages.create({
+          model,
+          max_tokens: max_tokens || 4096,
+          messages: currentMessages,
+          system,
+          temperature,
+          tools
+        });
+      } catch (err) {
+        // If Anthropic is unavailable due to credits/auth, fallback to OpenAI (if configured)
+        if (isAuthOrCreditsError(err)) {
+          console.warn(`[${requestId}] ⚠️ Anthropic unavailable, attempting OpenAI fallback: ${err.message}`);
+          const openAIResult = await runOpenAIWithTools({ model, max_tokens, temperature, system, messages: currentMessages, tools });
+          stats.successfulRequests++;
+          console.log(`[${requestId}] ✅ Complete via OpenAI (${openAIResult.turnCount} turns)`);
+          return res.json(openAIResult);
+        }
+        throw err;
+      }
 
       if (apiResponse.stop_reason === 'tool_use') {
         console.log(`[${requestId}] 🛠️ Tool Use (turn ${turnCount})`);
@@ -700,7 +836,16 @@ app.post('/api/claude', async (req, res) => {
   } catch (error) {
     stats.failedRequests++;
     console.error(`[${requestId}] ❌ Error:`, error);
-    res.status(500).json({ error: { type: error.constructor.name, message: error.message } });
+    const status =
+      error && error.code === 'OPENAI_NOT_CONFIGURED' ? 503 :
+      error && typeof error.status === 'number' ? error.status :
+      500;
+    res.status(status).json({
+      error: {
+        type: error && error.constructor ? error.constructor.name : 'Error',
+        message: error && error.message ? String(error.message) : 'Unknown error',
+      }
+    });
   }
 });
 
