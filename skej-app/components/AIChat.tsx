@@ -61,16 +61,20 @@ export function AIChat() {
 
   const generateScheduleContext = () => {
     const today = new Date().toISOString().split("T")[0];
+    const maxItems = 200;
+    const shown = scheduleItems.slice(0, maxItems);
     return `
 CURRENT SCHEDULE DATA (${scheduleItems.length} items):
 
 DETAILED ITEMS:
-${scheduleItems
+${shown
   .map(
     (item) =>
       `${item.id} | ${item.product} | Class ${item.class} | ${item.type} | ${item.start || "—"} to ${item.end || "—"} | Due: ${item.due || "—"} | ${item.status} | Freq: ${item.frequency || "—"}`
   )
   .join("\n")}
+
+${scheduleItems.length > maxItems ? `\nNOTE: Context truncated to first ${maxItems} items for reliability.` : ""}
 
 CURRENT DATE: ${today}`;
   };
@@ -93,7 +97,7 @@ CURRENT DATE: ${today}`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: selectedModel,
-          max_tokens: 4096,
+          max_tokens: 1024,
           temperature: 0.7,
           system: systemPrompt,
           messages: [...messages, { role: "user", content: userMessage }],
@@ -102,7 +106,19 @@ CURRENT DATE: ${today}`;
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get response from AI");
+        let msg = "Failed to get response from AI";
+        try {
+          const errJson: any = await response.json();
+          msg = errJson?.error?.message || errJson?.error || msg;
+        } catch {
+          try {
+            const errText = await response.text();
+            if (errText) msg = errText;
+          } catch {
+            // ignore
+          }
+        }
+        throw new Error(msg);
       }
 
       const data = await response.json();
@@ -130,7 +146,7 @@ CURRENT DATE: ${today}`;
       console.error("Chat error:", error);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Sorry, I encountered an error. Please try again." },
+        { role: "assistant", content: error instanceof Error ? error.message : "Sorry, I encountered an error." },
       ]);
     } finally {
       setIsLoading(false);
