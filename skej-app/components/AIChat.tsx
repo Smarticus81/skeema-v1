@@ -5,10 +5,10 @@ import { motion } from "framer-motion";
 import { Send, Loader2, Trash2, Settings2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Logo } from "./Logo";
-import { api } from "@/lib/api";
+import { api, getApiBaseUrl } from "@/lib/api";
 import { CHAT_SYSTEM_INSTRUCTION, CHAT_TOOLS } from "@/lib/chat-tools";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+const API_URL = getApiBaseUrl();
 
 interface Message {
   role: "user" | "assistant";
