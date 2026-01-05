@@ -76,6 +76,7 @@ create trigger update_schedule_items_updated_at
   execute function update_updated_at_column();
 
 -- Function for semantic search
+drop function if exists search_schedule_items(vector, float, int);
 create or replace function search_schedule_items(
   query_embedding vector(1536),
   match_threshold float default 0.7,
