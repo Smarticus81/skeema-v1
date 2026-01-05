@@ -65,8 +65,18 @@ Assistant: "I'll distribute them evenly among the 4 writers, 31 each."
 
 ✅ GOOD:
 User: "Assign writers to records without them"
-Assistant: [IMMEDIATELY calls bulk_operation 4 times with different writer assignments]
+Assistant: [IMMEDIATELY calls these tools in sequence:
+  1. search_records with query "no writer" to get list of unassigned IDs
+  2. Split IDs into 4 groups
+  3. bulk_operation(operation="update", targets=[group1_ids], updates={writer:"Harish G"})
+  4. bulk_operation(operation="update", targets=[group2_ids], updates={writer:"Venkata SD"})
+  5. bulk_operation(operation="update", targets=[group3_ids], updates={writer:"Terence"})
+  6. bulk_operation(operation="update", targets=[group4_ids], updates={writer:"Jeff"})
+]
 Assistant: "Done. Assigned 124 records: 31 to Harish G, 31 to Venkata SD, 31 to Terence, 31 to Jeff."
+
+EXAMPLE - Bulk assign using filter:
+bulk_operation(operation="update", targets=["no writer"], updates={writer: "Harish G"})
 
 REMEMBER: Tool calls happen BEFORE text responses, not after describing what you'll do.`;
 
@@ -235,7 +245,7 @@ export const CHAT_TOOLS = [
   },
   {
     name: "bulk_operation",
-    description: "Perform batch operations on multiple records at once.",
+    description: "Perform batch operations on multiple records at once. USE THIS for updating multiple records.",
     input_schema: {
       type: "object",
       properties: {
@@ -247,11 +257,24 @@ export const CHAT_TOOLS = [
         targets: {
           type: "array",
           items: { type: "string" },
-          description: "Array of record IDs, or special values like 'all', 'Class III', 'Class IIa'",
+          description: "Array of record IDs OR special filters: 'all', 'Class III', 'Class IIa', 'no writer', 'unassigned', 'without writer', 'writer:Harish G', 'status:Overdue'",
         },
         updates: {
           type: "object",
-          description: "For update operation: fields to update on all targets",
+          description: "For update operation: fields to update. Example: {writer: 'Harish G', status: 'In Progress'}",
+          properties: {
+            writer: { type: "string", description: "Assign writer name" },
+            status: { type: "string" },
+            product: { type: "string" },
+            class: { type: "string" },
+            type: { type: "string" },
+            frequency: { type: "string" },
+            start_period: { type: "string" },
+            end_period: { type: "string" },
+            due_date: { type: "string" },
+            notes: { type: "string" },
+            combined_psur: { type: "string" },
+          },
         },
         confirm: {
           type: "boolean",

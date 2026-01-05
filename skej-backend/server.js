@@ -247,20 +247,67 @@ app.use((req, _res, next) => {
 async function getTargets(targets, supabase) {
   if (!supabase) return [];
   let query = supabase.from('schedule_items').select('*');
+  
+  // Handle special filters
   if (targets.includes('all') || targets.includes('ALL')) {
     const { data } = await query;
     return data || [];
   }
-  const ids = targets.filter(t => !t.toLowerCase().includes('class'));
+  
+  // Check for "no writer", "empty writer", "unassigned" filters
+  const hasNoWriterFilter = targets.some(t => 
+    t.toLowerCase().includes('no writer') || 
+    t.toLowerCase().includes('empty writer') ||
+    t.toLowerCase().includes('unassigned') ||
+    t.toLowerCase().includes('without writer') ||
+    t === 'null writer'
+  );
+  
+  if (hasNoWriterFilter) {
+    query = query.or('writer.is.null,writer.eq.');
+    const { data } = await query;
+    return data || [];
+  }
+  
+  // Handle specific IDs
+  const ids = targets.filter(t => 
+    !t.toLowerCase().includes('class') && 
+    !t.toLowerCase().includes('writer') &&
+    !t.toLowerCase().includes('status')
+  );
+  
+  // Handle class filters
   const classes = targets.filter(t => t.toLowerCase().includes('class')).map(t => {
       const match = t.match(/class\s+([a-zA-Z0-9]+)/i);
       return match ? match[1].toUpperCase() : null;
     }).filter(Boolean);
-  if (ids.length > 0) query = query.in('id', ids);
-  else if (classes.length > 0) {
+  
+  // Handle writer filters
+  const writerFilters = targets.filter(t => 
+    t.toLowerCase().includes('writer:') || 
+    t.toLowerCase().includes('writer=')
+  ).map(t => t.split(/[:=]/)[1]?.trim()).filter(Boolean);
+  
+  // Handle status filters
+  const statusFilters = targets.filter(t => 
+    t.toLowerCase().includes('status:') || 
+    t.toLowerCase().includes('status=')
+  ).map(t => t.split(/[:=]/)[1]?.trim()).filter(Boolean);
+  
+  // Build query based on filters
+  if (ids.length > 0) {
+    query = query.in('id', ids);
+  } else if (classes.length > 0) {
     const dbClasses = classes.map(c => c === 'II' ? 'IIa' : c);
     query = query.in('class', dbClasses);
-  } else return [];
+  } else if (writerFilters.length > 0) {
+    query = query.in('writer', writerFilters);
+  } else if (statusFilters.length > 0) {
+    query = query.in('status', statusFilters);
+  } else {
+    return [];
+  }
+  
   const { data } = await query;
   return data || [];
 }
