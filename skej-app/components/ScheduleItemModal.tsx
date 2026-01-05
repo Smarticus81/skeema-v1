@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Calendar, Package, Activity, Clock, FileText, Edit2, Save, XCircle, Trash2, AlertTriangle, AlertOctagon, Info, User } from "lucide-react";
+import { X, Calendar, Package, Activity, Clock, FileText, Edit2, Save, XCircle, Trash2, AlertTriangle, AlertOctagon, Info, User, Link2, StickyNote } from "lucide-react";
 import type { ScheduleItem } from "@/lib/api";
 import { api } from "@/lib/api";
 import { format, parseISO, isValid, isBefore } from "date-fns";
@@ -168,6 +168,7 @@ export function ScheduleItemModal({ item, isOpen, onClose }: ScheduleItemModalPr
     { label: "Frequency", value: formData.frequency, key: "frequency", icon: Clock },
     { label: "Due Date", value: formData.due, key: "due", icon: Calendar, type: "date" },
     { label: "Writer", value: formData.writer, key: "writer", icon: User },
+    { label: "Combined PSUR", value: formData.combined_psur, key: "combined_psur", icon: Link2 },
     { label: "Status", value: formData.status, key: "status", icon: Activity },
   ];
 
@@ -468,6 +469,34 @@ export function ScheduleItemModal({ item, isOpen, onClose }: ScheduleItemModalPr
                     );
                   })}
                 </div>
+
+                {/* Notes */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.35 }}
+                  className={`mt-6 p-4 rounded-xl border transition-all ${
+                    isEditing ? "bg-background border-border" : "bg-muted/30 border-border/40 hover:border-primary/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <StickyNote className="w-4 h-4 text-primary" />
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notes</p>
+                  </div>
+                  {isEditing ? (
+                    <textarea
+                      value={formData.notes || ""}
+                      onChange={(e) => handleChange("notes", e.target.value)}
+                      rows={5}
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 outline-none resize-none"
+                      placeholder="Add context, assumptions, constraints, or rationale. These notes will be used by the AI during inference."
+                    />
+                  ) : (
+                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                      {formData.notes ? formData.notes : "—"}
+                    </p>
+                  )}
+                </motion.div>
 
                 {/* Status Badge */}
                 <motion.div

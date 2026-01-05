@@ -70,6 +70,8 @@ export function ImportDialog({ isOpen, onClose, onImportSuccess }: ImportDialogP
         due: convertExcelDate(row["Due Date"] || row["Due"]),
         status: row["Status"] || "Not Started",
         writer: row["Writer"] || row["Owner"] || row["Author"] || "",
+        notes: row["Notes"] || row["Note"] || "",
+        combined_psur: row["Combined PSUR"] || row["Combined"] || row["Group"] || row["Combined PSUR ID"] || "",
       }));
 
       console.log("Mapped items with dates:", items.slice(0, 2));

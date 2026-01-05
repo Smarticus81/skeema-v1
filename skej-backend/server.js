@@ -222,7 +222,7 @@ async function executeTool(name, input) {
     switch (name) {
       // ========== CREATE ==========
       case 'create_record': {
-        const { id, product, class: deviceClass, type, frequency, start_date, end_date, due_date, status } = input;
+        const { id, product, class: deviceClass, type, frequency, start_date, end_date, due_date, status, writer, notes, combined_psur } = input;
         
         // Check if ID already exists
         const { data: existing } = await supabase.from('schedule_items').select('id').eq('id', id).single();
@@ -239,7 +239,10 @@ async function executeTool(name, input) {
           start_period: toDateOrNull(start_date),
           end_period: toDateOrNull(end_date),
           due_date: toDateOrNull(due_date),
-          status: status || 'Not Started'
+          status: status || 'Not Started',
+          writer: writer || null,
+          notes: notes || null,
+          combined_psur: combined_psur || null
         };
         
         const { error } = await supabase.from('schedule_items').insert(newRecord);
@@ -270,7 +273,10 @@ async function executeTool(name, input) {
             start_period: data.start_period,
             end_period: data.end_period,
             due_date: data.due_date,
-            status: data.status
+            status: data.status,
+            writer: data.writer,
+            notes: data.notes,
+            combined_psur: data.combined_psur
           }
         };
       }
@@ -306,7 +312,10 @@ async function executeTool(name, input) {
             start_period: updates.start_period ? toDateOrNull(updates.start_period) : current.start_period,
             end_period: updates.end_period ? toDateOrNull(updates.end_period) : current.end_period,
             due_date: updates.due_date ? toDateOrNull(updates.due_date) : current.due_date,
-            status: updates.status || current.status
+            status: updates.status || current.status,
+            writer: updates.writer !== undefined ? (updates.writer || null) : current.writer,
+            notes: updates.notes !== undefined ? (updates.notes || null) : current.notes,
+            combined_psur: updates.combined_psur !== undefined ? (updates.combined_psur || null) : current.combined_psur
           };
           
           // Delete old record and insert new one
@@ -333,6 +342,9 @@ async function executeTool(name, input) {
         if (updates.end_period) dbUpdates.end_period = toDateOrNull(updates.end_period);
         if (updates.due_date) dbUpdates.due_date = toDateOrNull(updates.due_date);
         if (updates.status) dbUpdates.status = updates.status;
+        if (updates.writer !== undefined) dbUpdates.writer = updates.writer || null;
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
+        if (updates.combined_psur !== undefined) dbUpdates.combined_psur = updates.combined_psur || null;
         
         if (Object.keys(dbUpdates).length === 0) {
           return { message: "No updates provided." };
@@ -391,6 +403,12 @@ async function executeTool(name, input) {
         if (filters.status) {
           query = query.eq('status', filters.status);
         }
+        if (filters.writer_contains) {
+          query = query.ilike('writer', `%${filters.writer_contains}%`);
+        }
+        if (filters.combined_psur) {
+          query = query.eq('combined_psur', filters.combined_psur);
+        }
         if (filters.due_before && isValid(parseISO(filters.due_before))) {
           query = query.lte('due_date', filters.due_before);
         }
@@ -426,7 +444,10 @@ async function executeTool(name, input) {
             start_period: r.start_period,
             end_period: r.end_period,
             due_date: r.due_date,
-            status: r.status
+            status: r.status,
+            writer: r.writer,
+            notes: r.notes,
+            combined_psur: r.combined_psur
           }))
         };
       }
@@ -455,6 +476,9 @@ async function executeTool(name, input) {
             if (updates.end_period) dbUpdates.end_period = toDateOrNull(updates.end_period);
             if (updates.due_date) dbUpdates.due_date = toDateOrNull(updates.due_date);
             if (updates.status) dbUpdates.status = updates.status;
+            if (updates.writer !== undefined) dbUpdates.writer = updates.writer || null;
+            if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
+            if (updates.combined_psur !== undefined) dbUpdates.combined_psur = updates.combined_psur || null;
             
             const { error } = await supabase.from('schedule_items').update(dbUpdates).in('id', ids);
             if (error) throw error;
@@ -661,7 +685,8 @@ app.get('/api/schedule', async (req, res) => {
     const items = data.map(item => ({
       id: item.id, product: item.product, class: item.class || '', type: item.type || '',
       start: item.start_period || '', end: item.end_period || '', frequency: item.frequency || '',
-      due: item.due_date || '', status: item.status || 'Not Started', writer: item.writer || ''
+      due: item.due_date || '', status: item.status || 'Not Started', writer: item.writer || '',
+      notes: item.notes || '', combined_psur: item.combined_psur || ''
     }));
     res.json({ items });
   } catch (error) { 
@@ -696,7 +721,9 @@ app.post('/api/schedule', async (req, res) => {
       frequency: item.frequency || null, 
       due_date: toDateOrNull(item.due), 
       status: item.status || 'Not Started',
-      writer: item.writer || null
+      writer: item.writer || null,
+      notes: item.notes || null,
+      combined_psur: item.combined_psur || null
     }));
     
     const { error } = await supabase.from('schedule_items').upsert(dbItems, { onConflict: 'id' });

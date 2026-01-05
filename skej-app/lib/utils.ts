@@ -12,6 +12,9 @@ export function exportToExcel(items: ScheduleItem[], filename: string = "schedul
     "Frequency": item.frequency,
     "Due Date": item.due,
     "Status": item.status,
+    "Writer": item.writer,
+    "Combined PSUR": item.combined_psur,
+    "Notes": item.notes,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(data);
@@ -29,6 +32,9 @@ export function exportToExcel(items: ScheduleItem[], filename: string = "schedul
     { wch: 12 }, // Frequency
     { wch: 12 }, // Due
     { wch: 15 }, // Status
+    { wch: 22 }, // Writer
+    { wch: 18 }, // Combined
+    { wch: 60 }, // Notes
   ];
 
   const date = new Date().toISOString().split("T")[0];

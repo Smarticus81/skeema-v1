@@ -1,8 +1,24 @@
 -- Supabase Schema for skej Schedule Database
 -- Run this in the Supabase SQL Editor
 
--- Enable pgvector extension for semantic search
-create extension if not exists vector;
+-- Dedicated schema for extensions (Supabase linter: extension_in_public)
+create schema if not exists extensions;
+
+-- Enable pgvector extension for semantic search (move out of public schema)
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'vector') then
+    begin
+      alter extension vector set schema extensions;
+    exception when others then
+      -- If the extension is already in the desired schema or cannot be moved in this context, ignore.
+      null;
+    end;
+  else
+    create extension vector with schema extensions;
+  end if;
+end;
+$$;
 
 -- Schedule items table
 create table if not exists schedule_items (
@@ -16,6 +32,8 @@ create table if not exists schedule_items (
   due_date date,
   status text default 'Not Started',
   writer text,
+  notes text,
+  combined_psur text,
   created_at timestamp with time zone default timezone('utc'::text, now()),
   updated_at timestamp with time zone default timezone('utc'::text, now()),
   
@@ -25,6 +43,9 @@ create table if not exists schedule_items (
 
 -- Add writer column if table already exists
 alter table schedule_items add column if not exists writer text;
+-- Add notes + combined grouping columns if table already exists
+alter table schedule_items add column if not exists notes text;
+alter table schedule_items add column if not exists combined_psur text;
 
 -- Index for vector similarity search
 create index if not exists schedule_items_embedding_idx 
@@ -44,7 +65,8 @@ begin
   new.updated_at = timezone('utc'::text, now());
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql
+set search_path = public, extensions;
 
 -- Trigger to auto-update updated_at
 create trigger update_schedule_items_updated_at
@@ -68,6 +90,9 @@ returns table (
   frequency text,
   due_date date,
   status text,
+  writer text,
+  notes text,
+  combined_psur text,
   similarity float
 )
 language plpgsql
@@ -84,13 +109,17 @@ begin
     si.frequency,
     si.due_date,
     si.status,
+    si.writer,
+    si.notes,
+    si.combined_psur,
     1 - (si.embedding <=> query_embedding) as similarity
   from schedule_items si
   where 1 - (si.embedding <=> query_embedding) > match_threshold
   order by si.embedding <=> query_embedding
   limit match_count;
 end;
-$$;
+$$
+set search_path = public, extensions;
 
 -- Enable Row Level Security (optional but recommended)
 alter table schedule_items enable row level security;

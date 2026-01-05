@@ -78,6 +78,18 @@ export const CHAT_TOOLS = [
           type: "string",
           description: "Current status (e.g., Not Started, In Progress, Complete)",
         },
+        writer: {
+          type: "string",
+          description: "Assigned writer/owner for this record",
+        },
+        notes: {
+          type: "string",
+          description: "Notes that must be considered during inference and decision making",
+        },
+        combined_psur: {
+          type: "string",
+          description: "Optional combined PSUR grouping key. Multiple records with the same value are treated as one combined PSUR.",
+        },
       },
       required: ["id", "product"],
     },
@@ -108,7 +120,7 @@ export const CHAT_TOOLS = [
         },
         updates: {
           type: "object",
-          description: "Object containing fields to update. Can include: new_id, product, class, type, frequency, start_period, end_period, due_date, status",
+          description: "Object containing fields to update. Can include: new_id, product, class, type, frequency, start_period, end_period, due_date, status, writer, notes, combined_psur",
           properties: {
             new_id: { type: "string", description: "New ID to rename the record to" },
             product: { type: "string" },
@@ -119,6 +131,9 @@ export const CHAT_TOOLS = [
             end_period: { type: "string" },
             due_date: { type: "string" },
             status: { type: "string" },
+            writer: { type: "string" },
+            notes: { type: "string" },
+            combined_psur: { type: "string" },
           },
         },
       },
@@ -158,13 +173,15 @@ export const CHAT_TOOLS = [
             class: { type: "string", description: "Exact class match" },
             type_contains: { type: "string", description: "Type contains" },
             status: { type: "string", description: "Exact status match" },
+            writer_contains: { type: "string", description: "Writer contains" },
+            combined_psur: { type: "string", description: "Exact combined PSUR grouping key" },
             due_before: { type: "string", description: "Due date before (YYYY-MM-DD)" },
             due_after: { type: "string", description: "Due date after (YYYY-MM-DD)" },
           },
         },
         sort_by: {
           type: "string",
-          enum: ["id", "product", "class", "due_date", "status"],
+          enum: ["id", "product", "class", "due_date", "status", "writer"],
           description: "Field to sort by",
         },
         sort_order: {

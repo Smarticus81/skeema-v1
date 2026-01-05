@@ -70,7 +70,7 @@ DETAILED ITEMS:
 ${shown
   .map(
     (item) =>
-      `${item.id} | ${item.product} | Class ${item.class} | ${item.type} | ${item.start || "—"} to ${item.end || "—"} | Due: ${item.due || "—"} | ${item.status} | Freq: ${item.frequency || "—"}`
+      `${item.id} | ${item.product} | Class ${item.class} | ${item.type} | ${item.start || "—"} to ${item.end || "—"} | Due: ${item.due || "—"} | ${item.status} | Freq: ${item.frequency || "—"} | Writer: ${item.writer || "—"} | Combined: ${item.combined_psur || "—"} | Notes: ${item.notes ? item.notes.replace(/\s+/g, " ").slice(0, 240) : "—"}`
   )
   .join("\n")}
 

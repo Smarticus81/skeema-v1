@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { Package, Clock, AlertTriangle, TrendingUp, Calendar } from "lucide-react";
+import { Package, Clock, AlertTriangle, TrendingUp, Calendar, User } from "lucide-react";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -66,6 +66,38 @@ export function Dashboard({ items }: DashboardProps) {
       complianceRate,
     };
   }, [items]);
+
+  const writerStats = useMemo(() => {
+    const map = new Map<string, { total: number; overdue: number }>();
+    for (const item of items) {
+      const w = (item.writer || "").trim() || "Unassigned";
+      const entry = map.get(w) || { total: 0, overdue: 0 };
+      entry.total += 1;
+      if ((item.status || "").toLowerCase().includes("late")) entry.overdue += 1;
+      map.set(w, entry);
+    }
+    const rows = Array.from(map.entries())
+      .map(([writer, v]) => ({ writer, ...v }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+    return rows;
+  }, [items]);
+
+  const writerData = useMemo(() => {
+    if (!writerStats.length) {
+      return {
+        labels: ["Unassigned"],
+        datasets: [{ label: "Items", data: [0], backgroundColor: "#6b6b6b", borderRadius: 6 }],
+      };
+    }
+    return {
+      labels: writerStats.map((r) => r.writer),
+      datasets: [
+        { label: "Total", data: writerStats.map((r) => r.total), backgroundColor: "#2d5a4a", borderRadius: 6 },
+        { label: "Overdue", data: writerStats.map((r) => r.overdue), backgroundColor: "#ef4444", borderRadius: 6 },
+      ],
+    };
+  }, [writerStats]);
 
   const classData = useMemo(() => {
     const counts = {
@@ -311,6 +343,64 @@ export function Dashboard({ items }: DashboardProps) {
           </div>
         </motion.div>
       </div>
+
+      {/* Writer Metrics */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.65 }}
+        className="bg-background/40 border border-border/40 rounded-xl overflow-hidden"
+      >
+        <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-primary/5 to-accent/5 flex items-center justify-between">
+          <h3 className="text-xs font-semibold flex items-center gap-2">
+            <User className="w-3.5 h-3.5" />
+            Writer Metrics
+          </h3>
+          <p className="text-[10px] text-muted-foreground">
+            Top {Math.min(8, writerStats.length)} by volume
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 p-4">
+          <div className="h-52">
+            <Bar
+              data={writerData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: "top", labels: { boxWidth: 10 } },
+                  tooltip: { mode: "index", intersect: false },
+                },
+                scales: {
+                  y: { beginAtZero: true, grid: { color: "rgba(0,0,0,0.05)" } },
+                  x: { grid: { display: false } },
+                },
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            {writerStats.map((r) => (
+              <div key={r.writer} className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">{r.writer}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {r.overdue > 0 ? `${r.overdue} overdue` : "No overdue"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold">{r.total}</p>
+                  <p className="text-[10px] text-muted-foreground">items</p>
+                </div>
+              </div>
+            ))}
+            {writerStats.length === 0 && (
+              <div className="text-center text-muted-foreground text-xs py-10">
+                No writer data yet
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
 
       {/* Upcoming Due Dates - Enhanced Table */}
       <motion.div

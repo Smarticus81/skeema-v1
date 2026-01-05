@@ -33,6 +33,8 @@ export interface ScheduleItem {
   due: string;
   status: string;
   writer: string;
+  notes: string;
+  combined_psur: string;
 }
 
 export const api = {
