@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-5-2';
+const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -667,10 +667,10 @@ app.get('/api/models', (req, res) => {
     { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet' },
     { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
     // OpenAI (fallback when Anthropic unavailable)
-    { id: 'gpt-5-2', name: 'GPT-5.2', recommended: !!OPENAI_API_KEY },
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'gpt-4o', name: 'GPT-4o' },
+    { id: 'gpt-4o', name: 'GPT-4o', recommended: !!OPENAI_API_KEY },
     { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
+    { id: 'o1-preview', name: 'o1-preview' },
+    { id: 'o1-mini', name: 'o1-mini' },
   ];
   res.json({ models });
 });
