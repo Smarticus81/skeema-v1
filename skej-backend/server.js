@@ -173,6 +173,32 @@ async function runOpenAIWithTools({ model, max_tokens, temperature, system, mess
     }
 
     const text = (msg && msg.content) ? msg.content : '';
+    
+    // Check if AI is talking about doing something without actually doing it
+    const actionKeywords = [
+      'i will', 'i\'ll', 'let me', 'i can', 'i should',
+      'distribute', 'assign', 'update', 'change', 'set',
+      'need to', 'going to', 'about to'
+    ];
+    
+    const containsActionTalk = actionKeywords.some(kw => 
+      text.toLowerCase().includes(kw)
+    );
+    
+    // If AI is describing actions without tool use, force a retry
+    if (containsActionTalk && turnCount < maxTurns - 1 && openAITools.length > 0) {
+      console.log(`[OpenAI] ⚠️ AI described action without executing. Forcing tool use...`);
+      currentMessages.push({
+        role: 'assistant',
+        content: text,
+      });
+      currentMessages.push({
+        role: 'user',
+        content: 'ERROR: You just described what you would do without actually doing it. You MUST call the tools NOW. Do not respond with text - call bulk_operation or update_record immediately with the changes you just described.'
+      });
+      continue; // Force another turn
+    }
+    
     return {
       model: usedModel,
       turnCount,
@@ -905,6 +931,34 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
         currentMessages.push({ role: 'user', content: toolResults });
       } else {
         console.log(`[${requestId}] 🏁 Conversation complete (stop_reason: ${apiResponse.stop_reason})`);
+        
+        // Check if AI is talking about doing something without actually doing it
+        const responseText = apiResponse.content
+          ?.filter(c => c.type === 'text')
+          ?.map(c => c.text)
+          ?.join(' ') || '';
+        
+        const actionKeywords = [
+          'i will', 'i\'ll', 'let me', 'i can', 'i should',
+          'distribute', 'assign', 'update', 'change', 'set',
+          'need to', 'going to', 'about to'
+        ];
+        
+        const containsActionTalk = actionKeywords.some(kw => 
+          responseText.toLowerCase().includes(kw)
+        );
+        
+        // If AI is describing actions without tool use, force a retry
+        if (containsActionTalk && turnCount < maxTurns - 1) {
+          console.log(`[${requestId}] ⚠️ AI described action without executing. Forcing tool use...`);
+          currentMessages.push({ role: 'assistant', content: apiResponse.content });
+          currentMessages.push({
+            role: 'user',
+            content: 'ERROR: You just described what you would do without actually doing it. You MUST call the tools NOW. Do not respond with text - call bulk_operation or update_record immediately with the changes you just described.'
+          });
+          continue; // Force another turn
+        }
+        
         finalMessage = apiResponse;
         isComplete = true;
       }
