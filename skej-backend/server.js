@@ -127,7 +127,8 @@ async function runOpenAIWithTools({ model, max_tokens, temperature, system, mess
   ];
 
   let turnCount = 0;
-  while (turnCount < 10) {
+  const maxTurns = 20; // Increased for complex multi-step operations
+  while (turnCount < maxTurns) {
     turnCount++;
 
     const completion = await openai.chat.completions.create({
@@ -854,9 +855,11 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
     let isComplete = false;
     let turnCount = 0;
     let finalMessage = null;
+    const maxTurns = 20; // Increased for complex multi-step operations
 
-    while (!isComplete && turnCount < 10) {
+    while (!isComplete && turnCount < maxTurns) {
       turnCount++;
+      console.log(`[${requestId}] 🔄 Turn ${turnCount}/${maxTurns}`);
       
       let apiResponse;
       try {
@@ -881,14 +884,16 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
       }
 
       if (apiResponse.stop_reason === 'tool_use') {
-        console.log(`[${requestId}] 🛠️ Tool Use (turn ${turnCount})`);
+        console.log(`[${requestId}] 🛠️ Tool Use Detected (turn ${turnCount})`);
         currentMessages.push({ role: 'assistant', content: apiResponse.content });
 
         const toolResults = [];
         for (const contentBlock of apiResponse.content) {
           if (contentBlock.type === 'tool_use') {
-            console.log(`[${requestId}]   -> ${contentBlock.name}`);
+            console.log(`[${requestId}]   -> Executing: ${contentBlock.name}`);
+            console.log(`[${requestId}]   -> Input: ${JSON.stringify(contentBlock.input).slice(0, 200)}...`);
             const result = await executeTool(contentBlock.name, contentBlock.input);
+            console.log(`[${requestId}]   -> Result: ${JSON.stringify(result).slice(0, 200)}...`);
             toolResults.push({
               type: 'tool_result', 
               tool_use_id: contentBlock.id, 
@@ -896,8 +901,10 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
             });
           }
         }
+        console.log(`[${requestId}] ✅ Executed ${toolResults.length} tool(s), continuing conversation...`);
         currentMessages.push({ role: 'user', content: toolResults });
       } else {
+        console.log(`[${requestId}] 🏁 Conversation complete (stop_reason: ${apiResponse.stop_reason})`);
         finalMessage = apiResponse;
         isComplete = true;
       }
