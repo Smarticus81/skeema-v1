@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Send, Loader2, Trash2, Settings2 } from "lucide-react";
+import { Send, Loader2, Trash2, Settings2, Paperclip, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Logo } from "./Logo";
 import { api, getApiBaseUrl } from "@/lib/api";
@@ -27,7 +27,10 @@ export function AIChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState("claude-opus-4-5-20251101");
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data: scheduleItems = [] } = useQuery({
@@ -68,6 +71,13 @@ export function AIChat() {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
+    }
+  }, [input]);
+
   const generateScheduleContext = () => {
     const today = new Date().toISOString().split("T")[0];
     const maxItems = 200;
@@ -88,31 +98,67 @@ ${scheduleItems.length > maxItems ? `\nNOTE: Context truncated to first ${maxIte
 CURRENT DATE: ${today}`;
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachedFiles(prev => [...prev, ...files]);
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && attachedFiles.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
+    const currentFiles = [...attachedFiles];
+    const filesText = currentFiles.length > 0 
+      ? `\n\n[Attached ${currentFiles.length} file(s): ${currentFiles.map(f => f.name).join(', ')}]`
+      : '';
+    
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setAttachedFiles([]);
+    setMessages((prev) => [...prev, { role: "user", content: userMessage + filesText }]);
     setIsLoading(true);
 
     try {
       const scheduleContext = generateScheduleContext();
       const systemPrompt = CHAT_SYSTEM_INSTRUCTION + "\n\n" + scheduleContext;
 
-      const response = await fetch(`${API_URL}/claude`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: selectedModel,
-          max_tokens: 1024,
-          temperature: 0.7,
-          system: systemPrompt,
-          messages: [...messages, { role: "user", content: userMessage }],
-          tools: CHAT_TOOLS,
-        }),
-      });
+      // Use FormData if files are attached
+      let response;
+      if (currentFiles.length > 0) {
+        const formData = new FormData();
+        formData.append('model', selectedModel);
+        formData.append('max_tokens', '1024');
+        formData.append('temperature', '0.7');
+        formData.append('system', systemPrompt);
+        formData.append('messages', JSON.stringify([...messages, { role: "user", content: userMessage }]));
+        formData.append('tools', JSON.stringify(CHAT_TOOLS));
+        
+        currentFiles.forEach((file) => {
+          formData.append('files', file);
+        });
+
+        response = await fetch(`${API_URL}/claude`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        response = await fetch(`${API_URL}/claude`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: selectedModel,
+            max_tokens: 1024,
+            temperature: 0.7,
+            system: systemPrompt,
+            messages: [...messages, { role: "user", content: userMessage }],
+            tools: CHAT_TOOLS,
+          }),
+        });
+      }
 
       if (!response.ok) {
         let msg = "Failed to get response from AI";
@@ -171,6 +217,14 @@ CURRENT DATE: ${today}`;
 
   const handleClear = () => {
     setMessages([]);
+    setAttachedFiles([]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
   };
 
   return (
@@ -269,19 +323,63 @@ CURRENT DATE: ${today}`;
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="p-5 border-t border-border/40 bg-background/40">
-        <div className="flex gap-2 items-center bg-background border border-border/40 rounded-full px-4 py-2.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+        {/* Attached Files */}
+        {attachedFiles.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachedFiles.map((file, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-full text-xs"
+              >
+                <Paperclip className="w-3 h-3" />
+                <span className="max-w-[150px] truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(i)}
+                  className="hover:bg-background rounded-full p-0.5 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* Input Area */}
+        <div className="flex gap-2 items-end bg-background border border-border/40 rounded-3xl px-4 py-2.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
           <input
-            type="text"
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.json,.xml,.md,image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="p-2 hover:bg-muted rounded-full transition-colors disabled:opacity-50"
+            title="Attach files"
+          >
+            <Paperclip className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about your schedule..."
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about your schedule... (Shift+Enter for new line)"
             disabled={isLoading}
-            className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground disabled:opacity-50"
+            rows={1}
+            className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground disabled:opacity-50 resize-none max-h-[200px] py-1"
           />
           <button
             type="submit"
-            disabled={!input.trim() || isLoading}
-            className="p-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
+            className="p-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
           >
             <Send className="w-4 h-4" />
           </button>

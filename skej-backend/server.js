@@ -1,12 +1,45 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const { addYears, addMonths, parseISO, format, isValid, subDays, addDays, isBefore, isAfter } = require('date-fns');
 
 const app = express();
+
+// Configure multer for file uploads (store in memory)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/json',
+      'application/xml',
+      'text/xml',
+      'text/markdown',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+    if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} not supported`));
+    }
+  },
+});
 
 const PORT = process.env.PORT || 3000;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -167,6 +200,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Normalize duplicate slashes in URLs (e.g. "/api//schedule") to avoid 404s when
 // NEXT_PUBLIC_API_URL accidentally includes a trailing slash.
@@ -797,12 +831,13 @@ app.post('/api/schedule/bulk-delete', async (req, res) => {
 });
 
 // Claude Chat API with Tool Execution Loop
-app.post('/api/claude', async (req, res) => {
+app.post('/api/claude', upload.array('files', 10), async (req, res) => {
   stats.totalRequests++;
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   try {
     const { model, max_tokens, temperature, system, messages, tools } = req.body;
+    const files = req.files || [];
 
     if (!model || !messages) {
       return res.status(400).json({ error: { type: 'invalid_request', message: 'Missing fields' } });
@@ -812,7 +847,7 @@ app.post('/api/claude', async (req, res) => {
       return res.status(500).json({ error: { type: 'config_error', message: 'ANTHROPIC_API_KEY not configured' } });
     }
 
-    console.log(`\n[${requestId}] 📤 API Request: ${model}`);
+    console.log(`\n[${requestId}] 📤 API Request: ${model} (${files.length} file(s))`);
 
     // Tool Execution Loop
     let currentMessages = [...messages];
