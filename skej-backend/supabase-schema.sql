@@ -69,6 +69,7 @@ $$ language plpgsql
 set search_path = public, extensions;
 
 -- Trigger to auto-update updated_at
+drop trigger if exists update_schedule_items_updated_at on schedule_items;
 create trigger update_schedule_items_updated_at
   before update on schedule_items
   for each row
