@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
+  Link2,
 } from "lucide-react";
 import { api, type ScheduleItem } from "@/lib/api";
 import { Logo } from "@/components/Logo";
@@ -50,6 +51,23 @@ const STATUS_COLORS = {
 
 type SortField = "id" | "product" | "class" | "type" | "start" | "end" | "frequency" | "due" | "status" | "writer";
 type SortDirection = "asc" | "desc" | null;
+
+const GROUP_COLORS = [
+  { bg: "bg-emerald-500/5", border: "border-l-emerald-400/60" },
+  { bg: "bg-sky-500/5", border: "border-l-sky-400/60" },
+  { bg: "bg-violet-500/5", border: "border-l-violet-400/60" },
+  { bg: "bg-amber-500/5", border: "border-l-amber-400/60" },
+  { bg: "bg-rose-500/5", border: "border-l-rose-400/60" },
+  { bg: "bg-teal-500/5", border: "border-l-teal-400/60" },
+];
+
+function hashStringToIndex(value: string, mod: number) {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) {
+    h = (h * 31 + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % mod;
+}
 
 export default function Home() {
   const [filter, setFilter] = useState("all");
@@ -103,7 +121,7 @@ export default function Home() {
     return <ChevronDown className="w-3 h-3 text-primary" />;
   };
 
-  const filteredAndSortedItems = useMemo(() => {
+  const filteredItems = useMemo(() => {
     let result = items;
 
     if (filter !== "all") {
@@ -118,32 +136,96 @@ export default function Home() {
           item.product.toLowerCase().includes(query) ||
           item.type?.toLowerCase().includes(query) ||
           item.status?.toLowerCase().includes(query) ||
-          item.writer?.toLowerCase().includes(query)
+          item.writer?.toLowerCase().includes(query) ||
+          item.combined_psur?.toLowerCase().includes(query) ||
+          item.notes?.toLowerCase().includes(query)
       );
     }
 
-    if (sortField && sortDirection) {
-      result = [...result].sort((a, b) => {
-        let aVal = a[sortField] || "";
-        let bVal = b[sortField] || "";
+    return result;
+  }, [items, filter, searchQuery]);
 
-        if (sortField === "start" || sortField === "end" || sortField === "due") {
-          const aDate = aVal ? new Date(aVal).getTime() : 0;
-          const bDate = bVal ? new Date(bVal).getTime() : 0;
-          return sortDirection === "asc" ? aDate - bDate : bDate - aDate;
+  const groupedDisplayRows = useMemo(() => {
+    type Group = { groupKey: string; combinedKey: string | null; items: ScheduleItem[] };
+
+    const groups: Group[] = [];
+    const groupIndexByKey = new Map<string, number>();
+
+    // Build groups in the filtered order (stable), but keep grouped items together.
+    for (const item of filteredItems) {
+      const combinedKey = (item.combined_psur || "").trim();
+      const groupKey = combinedKey ? `g:${combinedKey}` : `s:${item.id}`;
+
+      const existingIdx = groupIndexByKey.get(groupKey);
+      if (existingIdx === undefined) {
+        groupIndexByKey.set(groupKey, groups.length);
+        groups.push({ groupKey, combinedKey: combinedKey || null, items: [item] });
+      } else {
+        groups[existingIdx].items.push(item);
+      }
+    }
+
+    // Lock internal order for grouped rows (not sorted independently).
+    for (const g of groups) {
+      if (g.items.length > 1) {
+        g.items.sort((a, b) => a.id.localeCompare(b.id));
+      }
+    }
+
+    const isDateField = (f: SortField) => f === "start" || f === "end" || f === "due";
+    const dir = sortDirection;
+
+    const groupSortValue = (g: Group) => {
+      if (!sortField || !dir) return null;
+      if (isDateField(sortField)) {
+        const times = g.items
+          .map((it) => (it[sortField] ? new Date(it[sortField]).getTime() : 0))
+          .filter((t) => Number.isFinite(t) && t > 0);
+        if (!times.length) return 0;
+        return dir === "asc" ? Math.min(...times) : Math.max(...times);
+      }
+
+      const vals = g.items
+        .map((it) => String((it as any)[sortField] || "").toLowerCase())
+        .filter((v) => v.length > 0);
+      if (!vals.length) return "";
+      return dir === "asc" ? vals.sort()[0] : vals.sort()[vals.length - 1];
+    };
+
+    if (sortField && dir) {
+      groups.sort((a, b) => {
+        const av = groupSortValue(a);
+        const bv = groupSortValue(b);
+
+        if (typeof av === "number" && typeof bv === "number") {
+          if (av !== bv) return dir === "asc" ? av - bv : bv - av;
+        } else {
+          const as = String(av);
+          const bs = String(bv);
+          if (as < bs) return dir === "asc" ? -1 : 1;
+          if (as > bs) return dir === "asc" ? 1 : -1;
         }
-
-        aVal = String(aVal).toLowerCase();
-        bVal = String(bVal).toLowerCase();
-        
-        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
-        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
-        return 0;
+        return a.groupKey.localeCompare(b.groupKey);
       });
     }
 
-    return result;
-  }, [items, filter, searchQuery, sortField, sortDirection]);
+    const rows = groups.flatMap((g) => {
+      const isGrouped = !!g.combinedKey && g.items.length > 1;
+      const colorIdx = isGrouped ? hashStringToIndex(g.combinedKey!, GROUP_COLORS.length) : -1;
+      const color = isGrouped ? GROUP_COLORS[colorIdx] : null;
+      return g.items.map((item, idx) => ({
+        item,
+        isGrouped,
+        combinedKey: g.combinedKey,
+        groupSize: g.items.length,
+        isFirstInGroup: idx === 0,
+        isLastInGroup: idx === g.items.length - 1,
+        color,
+      }));
+    });
+
+    return rows;
+  }, [filteredItems, sortField, sortDirection]);
 
   const checkCompliance = (item: ScheduleItem) => {
     try {
@@ -186,10 +268,10 @@ export default function Home() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredAndSortedItems.length) {
+    if (selectedIds.size === filteredItems.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredAndSortedItems.map((item) => item.id)));
+      setSelectedIds(new Set(filteredItems.map((item) => item.id)));
     }
   };
 
@@ -211,7 +293,7 @@ export default function Home() {
   const selectionState = 
     selectedIds.size === 0 
       ? "none" 
-      : selectedIds.size === filteredAndSortedItems.length 
+      : selectedIds.size === filteredItems.length 
         ? "all" 
         : "partial";
 
@@ -416,9 +498,12 @@ export default function Home() {
                         </thead>
                         <tbody>
                           <AnimatePresence mode="popLayout">
-                            {filteredAndSortedItems.map((item, i) => {
+                            {groupedDisplayRows.map((row, i) => {
+                              const item = row.item;
                               const isCompliant = checkCompliance(item);
                               const isSelected = selectedIds.has(item.id);
+                              const groupAccent = row.isGrouped && row.color ? `${row.color.border} ${row.color.bg}` : "";
+                              const groupDivider = row.isGrouped && row.isLastInGroup ? "border-b-2 border-border/30" : "";
                               return (
                                 <motion.tr
                                   key={item.id}
@@ -427,13 +512,13 @@ export default function Home() {
                                   exit={{ opacity: 0 }}
                                   transition={{ delay: Math.min(i * 0.01, 0.3) }}
                                   onClick={() => setSelectedItem(item)}
-                                  className={`border-b transition-all cursor-pointer group ${
+                                  className={`border-b transition-all cursor-pointer group border-l-4 ${groupDivider} ${
                                     isSelected
                                       ? "bg-primary/10 border-primary/30"
                                       : isCompliant
                                         ? "border-border/20 hover:bg-muted/40"
                                         : "border-red-500/50 bg-red-500/5 hover:bg-red-500/10 animate-pulse"
-                                  }`}
+                                  } ${groupAccent}`}
                                 >
                                   <td className="px-2 py-2">
                                     <button
@@ -449,6 +534,15 @@ export default function Home() {
                                   </td>
                                   <td className="px-3 py-2 text-xs font-medium text-foreground truncate">
                                     <div className="flex items-center gap-1.5">
+                                      {row.isGrouped && row.combinedKey && row.isFirstInGroup && (
+                                        <span
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-foreground/5 text-muted-foreground border border-border/40"
+                                          title={`Linked group: ${row.combinedKey} (${row.groupSize} records)`}
+                                        >
+                                          <Link2 className="w-3 h-3" />
+                                          {row.combinedKey}
+                                        </span>
+                                      )}
                                       {item.id}
                                       {!isCompliant && (
                                         <AlertTriangle className="w-3 h-3 text-red-500 animate-bounce flex-shrink-0" />
@@ -505,7 +599,7 @@ export default function Home() {
                         </tbody>
                       </table>
 
-                      {filteredAndSortedItems.length === 0 && (
+                      {filteredItems.length === 0 && (
                         <div className="flex items-center justify-center h-32 text-muted-foreground">
                           No items found
                         </div>
@@ -631,7 +725,7 @@ export default function Home() {
                                 </span>
                               )}
                               <span>
-                                {filteredAndSortedItems.length} of {items.length} items
+                                {filteredItems.length} of {items.length} items
                               </span>
                             </div>
                           </motion.div>
