@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini';
+const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-5-2';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -72,9 +72,9 @@ function anthropicToolsToOpenAITools(tools) {
 }
 
 function mapRequestedModelToOpenAI(model) {
-  const m = (model || '').trim();
+  const m = (model || '').trim().toLowerCase();
   // If caller already passes an OpenAI model id, use it.
-  if (m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3')) return m;
+  if (m.startsWith('gpt-') || m.startsWith('o1-') || m.startsWith('o3-')) return model;
   return OPENAI_DEFAULT_MODEL;
 }
 
@@ -659,12 +659,18 @@ app.get('/health', (req, res) => {
 
 app.get('/api/models', (req, res) => {
   const models = [
-    // Anthropic (may be unavailable if credits are depleted)
+    // Anthropic Claude 4.5 (latest generation)
+    { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', recommended: true },
+    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)' },
+    // Legacy Claude 3.x
     { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet' },
     { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
-    // OpenAI fallback
-    { id: 'gpt-4o-mini', name: 'GPT‑4o mini', recommended: !!OPENAI_API_KEY },
-    { id: 'gpt-4o', name: 'GPT‑4o' },
+    // OpenAI (fallback when Anthropic unavailable)
+    { id: 'gpt-5-2', name: 'GPT-5.2', recommended: !!OPENAI_API_KEY },
+    { id: 'gpt-5', name: 'GPT-5' },
+    { id: 'gpt-4o', name: 'GPT-4o' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
   ];
   res.json({ models });
 });
