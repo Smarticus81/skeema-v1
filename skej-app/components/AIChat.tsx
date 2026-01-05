@@ -50,8 +50,12 @@ export function AIChat() {
     { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5 (Fast)" },
     { id: "claude-3-7-sonnet-latest", name: "Claude 3.7 Sonnet" },
     { id: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet" },
+    { id: "gpt-5.2", name: "GPT-5.2 (Best for coding/agents)" },
+    { id: "gpt-5.2-pro", name: "GPT-5.2 Pro (Smarter)" },
+    { id: "gpt-5-mini", name: "GPT-5 mini (Fast)" },
+    { id: "gpt-5-nano", name: "GPT-5 nano (Fastest)" },
     { id: "gpt-4o", name: "GPT-4o" },
-    { id: "gpt-4o-mini", name: "GPT-4o mini" },
+    { id: "gpt-4o-mini", name: "GPT-4o-mini" },
     { id: "o1-preview", name: "o1-preview" },
     { id: "o1-mini", name: "o1-mini" },
   ];
