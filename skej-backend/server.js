@@ -178,23 +178,32 @@ async function runOpenAIWithTools({ model, max_tokens, temperature, system, mess
     const actionKeywords = [
       'i will', 'i\'ll', 'let me', 'i can', 'i should',
       'distribute', 'assign', 'update', 'change', 'set',
-      'need to', 'going to', 'about to'
+      'need to', 'going to', 'about to', 'i processed',
+      'i executed', 'i already', 'request processed'
     ];
     
     const containsActionTalk = actionKeywords.some(kw => 
       text.toLowerCase().includes(kw)
     );
     
+    // Also check if response is very short and claims completion without details
+    const isVagueCompletion = text.length < 100 && (
+      text.toLowerCase().includes('processed') ||
+      text.toLowerCase().includes('done') ||
+      text.toLowerCase().includes('completed')
+    );
+    
     // If AI is describing actions without tool use, force a retry
-    if (containsActionTalk && turnCount < maxTurns - 1 && openAITools.length > 0) {
-      console.log(`[OpenAI] ⚠️ AI described action without executing. Forcing tool use...`);
+    if ((containsActionTalk || isVagueCompletion) && turnCount < maxTurns - 1 && openAITools.length > 0) {
+      console.log(`[OpenAI] ⚠️ AI claimed completion without executing tools. Forcing tool use...`);
+      console.log(`[OpenAI] Response text: "${text.slice(0, 150)}..."`);
       currentMessages.push({
         role: 'assistant',
         content: text,
       });
       currentMessages.push({
         role: 'user',
-        content: 'ERROR: You just described what you would do without actually doing it. You MUST call the tools NOW. Do not respond with text - call bulk_operation or update_record immediately with the changes you just described.'
+        content: 'CRITICAL ERROR: You responded with text instead of calling tools. The user asked you to UPDATE RECORDS IN THE DATABASE. You must call bulk_operation, update_record, or search_records tools RIGHT NOW. Do NOT respond with text - ONLY call the appropriate tool with the exact changes requested.'
       });
       continue; // Force another turn
     }
@@ -976,23 +985,32 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
         const actionKeywords = [
           'i will', 'i\'ll', 'let me', 'i can', 'i should',
           'distribute', 'assign', 'update', 'change', 'set',
-          'need to', 'going to', 'about to'
+          'need to', 'going to', 'about to', 'i processed',
+          'i executed', 'i already', 'request processed'
         ];
         
         const containsActionTalk = actionKeywords.some(kw => 
           responseText.toLowerCase().includes(kw)
         );
         
+        // Also check if response is very short and claims completion without details
+        const isVagueCompletion = responseText.length < 100 && (
+          responseText.toLowerCase().includes('processed') ||
+          responseText.toLowerCase().includes('done') ||
+          responseText.toLowerCase().includes('completed')
+        );
+        
         // If AI is describing actions without tool use, force a retry
         // BUT only if the response doesn't contain any tool_use blocks
         const hasToolUse = apiResponse.content.some(c => c.type === 'tool_use');
         
-        if (containsActionTalk && !hasToolUse && turnCount < maxTurns - 1) {
-          console.log(`[${requestId}] ⚠️ AI described action without executing. Forcing tool use...`);
+        if ((containsActionTalk || isVagueCompletion) && !hasToolUse && turnCount < maxTurns - 1) {
+          console.log(`[${requestId}] ⚠️ AI claimed completion without executing tools. Forcing tool use...`);
+          console.log(`[${requestId}] Response text: "${responseText.slice(0, 150)}..."`);
           currentMessages.push({ role: 'assistant', content: apiResponse.content });
           currentMessages.push({
             role: 'user',
-            content: 'ERROR: You just described what you would do without actually doing it. You MUST call the tools NOW. Do not respond with text - call bulk_operation or update_record immediately with the changes you just described.'
+            content: 'CRITICAL ERROR: You responded with text instead of calling tools. The user asked you to UPDATE RECORDS IN THE DATABASE. You must call bulk_operation, update_record, or search_records tools RIGHT NOW. Do NOT respond with text - ONLY call the appropriate tool with the exact changes requested.'
           });
           continue; // Force another turn
         }
