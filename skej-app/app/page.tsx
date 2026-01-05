@@ -49,7 +49,7 @@ const STATUS_COLORS = {
   Overdue: "bg-red-100 text-red-700",
 };
 
-type SortField = "id" | "product" | "class" | "type" | "start" | "end" | "frequency" | "due" | "status" | "writer";
+type SortField = "id" | "product" | "class" | "type" | "start" | "end" | "frequency" | "due" | "status" | "writer" | "notes";
 type SortDirection = "asc" | "desc" | null;
 
 const GROUP_COLORS = [
@@ -485,14 +485,15 @@ export default function Home() {
                               </button>
                             </th>
                             <SortableHeader field="id" label="ID" width="w-[90px]" />
-                            <SortableHeader field="product" label="Product" width="w-[160px]" />
+                            <SortableHeader field="product" label="Product" width="w-[140px]" />
                             <SortableHeader field="class" label="Class" width="w-[60px]" />
                             <SortableHeader field="type" label="Type" width="w-[90px]" />
                             <SortableHeader field="start" label="Start" width="w-[85px]" />
                             <SortableHeader field="end" label="End" width="w-[85px]" />
                             <SortableHeader field="frequency" label="Freq" width="w-[70px]" />
                             <SortableHeader field="due" label="Due" width="w-[85px]" />
-                            <SortableHeader field="writer" label="Writer" width="w-[100px]" />
+                            <SortableHeader field="writer" label="Writer" width="w-[90px]" />
+                            <SortableHeader field="notes" label="Notes" width="w-[140px]" />
                             <SortableHeader field="status" label="Status" width="w-[90px]" />
                           </tr>
                         </thead>
@@ -578,6 +579,13 @@ export default function Home() {
                                         <User className="w-3 h-3" />
                                         {item.writer}
                                       </span>
+                                    ) : (
+                                      <span className="text-muted-foreground/50">—</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-xs text-muted-foreground truncate" title={item.notes}>
+                                    {item.notes ? (
+                                      <span className="italic text-foreground/70">{item.notes}</span>
                                     ) : (
                                       <span className="text-muted-foreground/50">—</span>
                                     )}
