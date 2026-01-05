@@ -127,6 +127,7 @@ set search_path = public, extensions;
 alter table schedule_items enable row level security;
 
 -- Policy to allow all operations (adjust based on your auth needs)
+drop policy if exists "Allow all operations" on schedule_items;
 create policy "Allow all operations" on schedule_items
   for all using (true);
 
