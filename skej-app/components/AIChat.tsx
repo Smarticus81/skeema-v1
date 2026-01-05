@@ -124,21 +124,28 @@ CURRENT DATE: ${today}`;
       const data = await response.json();
       let assistantMessage = "";
 
-      if (data.content) {
+      if (data && data.content) {
         if (Array.isArray(data.content)) {
           assistantMessage = data.content
-            .filter((c: any) => c.type === "text")
+            .filter((c: any) => c && c.type === "text" && c.text)
             .map((c: any) => c.text)
             .join("\n");
-        } else {
+        } else if (typeof data.content === "string") {
           assistantMessage = data.content;
         }
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: assistantMessage || "I processed your request." },
-      ]);
+      if (assistantMessage) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: assistantMessage },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "I processed your request." },
+        ]);
+      }
       
       // Refresh schedule data in case the AI made updates
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
@@ -217,7 +224,7 @@ CURRENT DATE: ${today}`;
           </div>
         )}
 
-        {messages.map((message, i) => (
+        {messages.filter(m => m && m.content).map((message, i) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, y: 10 }}
@@ -231,7 +238,7 @@ CURRENT DATE: ${today}`;
                   : "bg-muted text-foreground"
               }`}
             >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content || ""}</p>
             </div>
           </motion.div>
         ))}
