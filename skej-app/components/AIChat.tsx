@@ -131,11 +131,12 @@ CURRENT DATE: ${today}`;
       if (currentFiles.length > 0) {
         const formData = new FormData();
         formData.append('model', selectedModel);
-        formData.append('max_tokens', '1024');
-        formData.append('temperature', '0.7');
+        formData.append('max_tokens', '512');
+        formData.append('temperature', '0.3');
         formData.append('system', systemPrompt);
         formData.append('messages', JSON.stringify([...messages, { role: "user", content: userMessage }]));
         formData.append('tools', JSON.stringify(CHAT_TOOLS));
+        formData.append('tool_choice', JSON.stringify({ type: "auto" }));
         
         currentFiles.forEach((file) => {
           formData.append('files', file);
@@ -151,11 +152,12 @@ CURRENT DATE: ${today}`;
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: selectedModel,
-            max_tokens: 1024,
-            temperature: 0.7,
+            max_tokens: 512,
+            temperature: 0.3,
             system: systemPrompt,
             messages: [...messages, { role: "user", content: userMessage }],
             tools: CHAT_TOOLS,
+            tool_choice: { type: "auto" },
           }),
         });
       }
