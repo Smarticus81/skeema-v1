@@ -767,24 +767,12 @@ app.get('/health', (req, res) => {
 
 app.get('/api/models', (req, res) => {
   const models = [
-    // Anthropic Claude 4.5 (latest generation)
-    { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', recommended: true },
-    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)' },
-    // Legacy Claude 3.x
-    { id: 'claude-3-7-sonnet-latest', name: 'Claude 3.7 Sonnet' },
-    { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
-    // OpenAI GPT-5 series (fallback when Anthropic unavailable)
-    { id: 'gpt-5.2', name: 'GPT-5.2 (Best for coding/agents)', recommended: !!OPENAI_API_KEY },
-    { id: 'gpt-5.2-pro', name: 'GPT-5.2 Pro (Smarter)' },
-    { id: 'gpt-5-mini', name: 'GPT-5 mini (Fast)' },
-    { id: 'gpt-5-nano', name: 'GPT-5 nano (Fastest)' },
-    // OpenAI GPT-4 series
-    { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
-    // OpenAI reasoning models
-    { id: 'o1-preview', name: 'o1-preview' },
-    { id: 'o1-mini', name: 'o1-mini' },
+    // Anthropic Claude 4.5 (best quality)
+    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Best)', recommended: true },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fastest)' },
+    // OpenAI (cheapest fallback)
+    { id: 'gpt-5-nano', name: 'GPT-5 nano (Cheapest)', recommended: !!OPENAI_API_KEY },
+    { id: 'gpt-4o-mini', name: 'GPT-4o mini (Cheap)' },
   ];
   res.json({ models });
 });
@@ -996,7 +984,10 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
         );
         
         // If AI is describing actions without tool use, force a retry
-        if (containsActionTalk && turnCount < maxTurns - 1) {
+        // BUT only if the response doesn't contain any tool_use blocks
+        const hasToolUse = apiResponse.content.some(c => c.type === 'tool_use');
+        
+        if (containsActionTalk && !hasToolUse && turnCount < maxTurns - 1) {
           console.log(`[${requestId}] ⚠️ AI described action without executing. Forcing tool use...`);
           currentMessages.push({ role: 'assistant', content: apiResponse.content });
           currentMessages.push({

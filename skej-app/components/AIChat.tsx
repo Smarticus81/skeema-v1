@@ -25,7 +25,7 @@ export function AIChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("claude-opus-4-5-20251101");
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5-20250929");
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,19 +48,10 @@ export function AIChat() {
   });
 
   const models: Model[] = modelData?.models || [
-    { id: "claude-opus-4-5-20251101", name: "Claude Opus 4.5", recommended: true },
-    { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5" },
-    { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5 (Fast)" },
-    { id: "claude-3-7-sonnet-latest", name: "Claude 3.7 Sonnet" },
-    { id: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet" },
-    { id: "gpt-5.2", name: "GPT-5.2 (Best for coding/agents)" },
-    { id: "gpt-5.2-pro", name: "GPT-5.2 Pro (Smarter)" },
-    { id: "gpt-5-mini", name: "GPT-5 mini (Fast)" },
-    { id: "gpt-5-nano", name: "GPT-5 nano (Fastest)" },
-    { id: "gpt-4o", name: "GPT-4o" },
-    { id: "gpt-4o-mini", name: "GPT-4o-mini" },
-    { id: "o1-preview", name: "o1-preview" },
-    { id: "o1-mini", name: "o1-mini" },
+    { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5 (Best)", recommended: true },
+    { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5 (Fastest)" },
+    { id: "gpt-5-nano", name: "GPT-5 nano (Cheapest)" },
+    { id: "gpt-4o-mini", name: "GPT-4o mini (Cheap)" },
   ];
 
   const scrollToBottom = () => {
