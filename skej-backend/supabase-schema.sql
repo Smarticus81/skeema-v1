@@ -132,5 +132,16 @@ create policy "Allow all operations" on schedule_items
   for all using (true);
 
 -- Enable real-time subscriptions
-alter publication supabase_realtime add table schedule_items;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables 
+    where pubname = 'supabase_realtime' 
+    and schemaname = 'public' 
+    and tablename = 'schedule_items'
+  ) then
+    alter publication supabase_realtime add table schedule_items;
+  end if;
+end;
+$$;
 
