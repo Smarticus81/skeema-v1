@@ -148,6 +148,45 @@ export default function Home() {
   const groupedDisplayRows = useMemo(() => {
     type Group = { groupKey: string; combinedKey: string | null; items: ScheduleItem[] };
 
+    const isDateField = (f: SortField) => f === "start" || f === "end" || f === "due";
+
+    const toTime = (value?: string) => {
+      if (!value) return null;
+      const t = new Date(value).getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+
+    // If sorting is active, sort all records together (no grouping)
+    if (sortField && sortDirection) {
+      const sorted = [...filteredItems].sort((a, b) => {
+        if (isDateField(sortField)) {
+          const at = toTime(a[sortField]);
+          const bt = toTime(b[sortField]);
+
+          if (at === null && bt === null) return 0;
+          if (at === null) return sortDirection === "asc" ? 1 : -1;
+          if (bt === null) return sortDirection === "asc" ? -1 : 1;
+          return sortDirection === "asc" ? at - bt : bt - at;
+        }
+
+        const av = String((a as any)[sortField] || "").toLowerCase();
+        const bv = String((b as any)[sortField] || "").toLowerCase();
+        if (av < bv) return sortDirection === "asc" ? -1 : 1;
+        if (av > bv) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+
+      return sorted.map((item) => ({
+        item,
+        isGrouped: false,
+        combinedKey: (item.combined_psur || "").trim() || null,
+        groupSize: 1,
+        isFirstInGroup: true,
+        isLastInGroup: true,
+        color: null,
+      }));
+    }
+
     const groups: Group[] = [];
     const groupIndexByKey = new Map<string, number>();
 
@@ -172,7 +211,6 @@ export default function Home() {
       }
     }
 
-    const isDateField = (f: SortField) => f === "start" || f === "end" || f === "due";
     const dir = sortDirection;
 
     const groupSortValue = (g: Group) => {

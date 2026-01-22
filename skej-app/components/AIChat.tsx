@@ -25,7 +25,7 @@ export function AIChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5-20250929");
+  const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,10 +48,10 @@ export function AIChat() {
   });
 
   const models: Model[] = modelData?.models || [
-    { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5 (Best)", recommended: true },
-    { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5 (Fastest)" },
-    { id: "gpt-5-nano", name: "GPT-5 nano (Cheapest)" },
-    { id: "gpt-4o-mini", name: "GPT-4o mini (Cheap)" },
+    { id: "gpt-5-nano", name: "GPT-5 nano (Fast & Cheap)", recommended: true },
+    { id: "gpt-5-mini", name: "GPT-5 mini (Balanced)" },
+    { id: "gpt-5.2", name: "GPT-5.2 (Highest quality)" },
+    { id: "gpt-4o-mini", name: "GPT-4o mini (Low latency)" },
   ];
 
   const scrollToBottom = () => {

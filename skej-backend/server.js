@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
-const Anthropic = require('@anthropic-ai/sdk');
+
 const OpenAI = require('openai');
 const { addYears, addMonths, parseISO, format, isValid, subDays, addDays, isBefore, isAfter } = require('date-fns');
 
@@ -42,9 +42,8 @@ const upload = multer({
 });
 
 const PORT = process.env.PORT || 3000;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-5.2';
+const OPENAI_DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || 'gpt-5-nano';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -56,15 +55,11 @@ if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL !== 'your_supabase_url_here') {
   console.log('✓ Supabase client initialized');
 }
 
-// Initialize Anthropic Client
-const anthropic = new Anthropic({
-  apiKey: ANTHROPIC_API_KEY || 'dummy_key',
-});
-
-// Initialize OpenAI Client (optional fallback if Anthropic is unavailable)
+// Initialize OpenAI Client (required)
 const openai = OPENAI_API_KEY
   ? new OpenAI({ apiKey: OPENAI_API_KEY })
   : null;
+console.log(`✓ OpenAI client ${openai ? 'initialized' : 'not configured'}`);
 
 let stats = {
   totalRequests: 0,
@@ -75,19 +70,10 @@ let stats = {
   errors: []
 };
 
-function isAnthropicCreditError(err) {
-  const msg = (err && err.message) ? String(err.message) : '';
-  return msg.toLowerCase().includes('credit balance is too low')
-    || msg.toLowerCase().includes('insufficient credits')
-    || msg.toLowerCase().includes('plans & billing');
-}
-
 function isAuthOrCreditsError(err) {
   const msg = (err && err.message) ? String(err.message) : '';
-  return isAnthropicCreditError(err)
-    || msg.toLowerCase().includes('invalid api key')
-    || msg.toLowerCase().includes('unauthorized')
-    || msg.toLowerCase().includes('401');
+  const m = msg.toLowerCase();
+  return m.includes('credit') || m.includes('insufficient credits') || m.includes('invalid api key') || m.includes('unauthorized') || m.includes('401');
 }
 
 function anthropicToolsToOpenAITools(tools) {
@@ -127,18 +113,26 @@ async function runOpenAIWithTools({ model, max_tokens, temperature, system, mess
   ];
 
   let turnCount = 0;
+  let lastTurnHadToolUse = false;
   const maxTurns = 20; // Increased for complex multi-step operations
   while (turnCount < maxTurns) {
     turnCount++;
 
-    const completion = await openai.chat.completions.create({
+    const requestPayload = {
       model: usedModel,
       messages: currentMessages,
       tools: openAITools.length ? openAITools : undefined,
       tool_choice: openAITools.length ? 'auto' : undefined,
-      temperature: typeof temperature === 'number' ? temperature : 0.7,
-      max_tokens: typeof max_tokens === 'number' ? max_tokens : 4096,
-    });
+      max_completion_tokens: typeof max_tokens === 'number' ? max_tokens : 4096,
+    };
+
+    const usedModelLower = (usedModel || '').toLowerCase();
+    // gpt-5-nano only supports the default temperature; omit it to avoid errors
+    if (usedModelLower !== 'gpt-5-nano') {
+      requestPayload.temperature = typeof temperature === 'number' ? temperature : 0.7;
+    }
+
+    const completion = await openai.chat.completions.create(requestPayload);
 
     const choice = completion.choices && completion.choices[0];
     const msg = choice && choice.message ? choice.message : null;
@@ -169,6 +163,7 @@ async function runOpenAIWithTools({ model, max_tokens, temperature, system, mess
           content: JSON.stringify(result),
         });
       }
+      lastTurnHadToolUse = true;
       continue;
     }
 
@@ -194,7 +189,10 @@ async function runOpenAIWithTools({ model, max_tokens, temperature, system, mess
     );
     
     // If AI is describing actions without tool use, force a retry
-    if ((containsActionTalk || isVagueCompletion) && turnCount < maxTurns - 1 && openAITools.length > 0) {
+    const skipActionGuard = lastTurnHadToolUse;
+    lastTurnHadToolUse = false;
+
+    if (!skipActionGuard && (containsActionTalk || isVagueCompletion) && turnCount < maxTurns - 1 && openAITools.length > 0) {
       console.log(`[OpenAI] ⚠️ AI claimed completion without executing tools. Forcing tool use...`);
       console.log(`[OpenAI] Response text: "${text.slice(0, 150)}..."`);
       currentMessages.push({
@@ -321,7 +319,15 @@ async function getTargets(targets, supabase) {
   return data || [];
 }
 
-const toDateOrNull = (val) => (!val || val === 'TBD' || val === '') ? null : val;
+const toDateOrNull = (val) => {
+  if (!val || typeof val !== 'string') return null;
+  const v = val.trim();
+  if (v === '' || v === 'TBD') return null;
+  // Basic YYYY-MM-DD check or ISO check
+  const parsed = parseISO(v);
+  if (isValid(parsed)) return v;
+  return null;
+};
 const normalizeClass = (classVal) => {
   if (!classVal || classVal === 'TBD') return 'I';
   const valid = ['I', 'IIa', 'IIb', 'III'];
@@ -768,7 +774,6 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    apiKeyConfigured: !!ANTHROPIC_API_KEY,
     openaiConfigured: !!OPENAI_API_KEY,
     supabaseConnected: !!supabase,
   });
@@ -776,13 +781,12 @@ app.get('/health', (req, res) => {
 
 app.get('/api/models', (req, res) => {
   const models = [
-    // Anthropic Claude 4.5 (best quality)
-    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Best)', recommended: true },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fastest)' },
-    // OpenAI (cheapest fallback)
-    { id: 'gpt-5-nano', name: 'GPT-5 nano (Cheapest)', recommended: !!OPENAI_API_KEY },
-    { id: 'gpt-4o-mini', name: 'GPT-4o mini (Cheap)' },
+    { id: 'gpt-5-nano', name: 'GPT-5 nano (Fast & Cheap)', recommended: !!OPENAI_API_KEY },
+    { id: 'gpt-5-mini', name: 'GPT-5 mini (Balanced)' },
+    { id: 'gpt-5.2', name: 'GPT-5.2 (Highest quality)' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o mini (Low latency)' },
   ];
+  
   res.json({ models });
 });
 
@@ -795,6 +799,7 @@ app.get('/api/supabase/status', (req, res) => res.json({
 
 // Schedule Endpoints
 app.get('/api/schedule', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); // Disable caching
   if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
   try {
     const { data, error } = await supabase.from('schedule_items').select('*').order('id');
@@ -811,10 +816,12 @@ app.get('/api/schedule', async (req, res) => {
   }
 });
 
+
 app.post('/api/schedule', async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
   try {
     const { items } = req.body;
+    console.log(`📥 Received ${items?.length} items to save`);
     
     let autoIdCounter = 1;
     const processedItems = items.map(item => {
@@ -842,11 +849,26 @@ app.post('/api/schedule', async (req, res) => {
       notes: item.notes || null,
       combined_psur: item.combined_psur || null
     }));
+
+    // Deduplicate items by ID to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+    const uniqueItemsMap = new Map();
+    dbItems.forEach(item => {
+      uniqueItemsMap.set(item.id, item);
+    });
+    const uniqueDbItems = Array.from(uniqueItemsMap.values());
+
+    if (dbItems.length !== uniqueDbItems.length) {
+      console.log(`⚠️ Deduplicated batch: ${dbItems.length} -> ${uniqueDbItems.length} items (removed duplicates)`);
+    }
     
-    const { error } = await supabase.from('schedule_items').upsert(dbItems, { onConflict: 'id' });
-    if (error) throw error;
+    const { error } = await supabase.from('schedule_items').upsert(uniqueDbItems, { onConflict: 'id' });
+    if (error) {
+      console.error("❌ Supabase Upsert Error:", error);
+      throw error;
+    }
     res.json({ success: true, saved: dbItems.length, skipped: 0 });
   } catch (error) { 
+    console.error("❌ SERVER ERROR in /api/schedule:", error);
     res.status(500).json({ error: error.message }); 
   }
 });
@@ -914,11 +936,15 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
       return res.status(400).json({ error: { type: 'invalid_request', message: 'Missing fields' } });
     }
 
-    if (!ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: { type: 'config_error', message: 'ANTHROPIC_API_KEY not configured' } });
+    if (!OPENAI_API_KEY) {
+      return res.status(500).json({ error: { type: 'config_error', message: 'OPENAI_API_KEY not configured' } });
     }
 
-    console.log(`\n[${requestId}] 📤 API Request: ${model} (${files.length} file(s))`);
+    console.log(`\n[${requestId}] 📤 API Request (OpenAI): ${model} (${files.length} file(s))`);
+
+    const openAIResult = await runOpenAIWithTools({ model, max_tokens, temperature, system, messages, tools });
+    stats.successfulRequests++;
+    return res.json(openAIResult);
 
     // Tool Execution Loop
     let currentMessages = [...messages];
@@ -982,16 +1008,30 @@ app.post('/api/claude', upload.array('files', 10), async (req, res) => {
           ?.map(c => c.text)
           ?.join(' ') || '';
         
+        // Refined action keywords to avoid false positives with informational responses
+        // e.g. "assigned to" shouldn't trigger "assign"
         const actionKeywords = [
           'i will', 'i\'ll', 'let me', 'i can', 'i should',
-          'distribute', 'assign', 'update', 'change', 'set',
-          'need to', 'going to', 'about to', 'i processed',
-          'i executed', 'i already', 'request processed'
+          'distribute', 'need to', 'going to', 'about to', 
+          'i processed', 'i executed', 'i already', 'request processed'
         ];
+
+        // Specific checks for update verbs ensuring they aren't part of passive descriptions
+        const isUpdateAction = 
+          responseText.toLowerCase().includes('update') && !responseText.toLowerCase().includes('updated at') && !responseText.toLowerCase().includes('last update');
         
-        const containsActionTalk = actionKeywords.some(kw => 
-          responseText.toLowerCase().includes(kw)
-        );
+        const isChangeAction =
+          responseText.toLowerCase().includes('change') && !responseText.toLowerCase().includes('no change') && !responseText.toLowerCase().includes('changes');
+
+        const isAssignAction =
+          (responseText.toLowerCase().includes('assign ') || responseText.toLowerCase().includes('set '))
+          && !responseText.toLowerCase().includes('assigned to')  // "assigned to John" (passive)
+          && !responseText.toLowerCase().includes('set of')       // "set of items"
+          && !responseText.toLowerCase().includes('set up');      // "set up"
+
+        const containsActionTalk = actionKeywords.some(kw => responseText.toLowerCase().includes(kw))
+          || isUpdateAction || isChangeAction || isAssignAction;
+
         
         // Also check if response is very short and claims completion without details
         const isVagueCompletion = responseText.length < 100 && (
@@ -1045,7 +1085,7 @@ app.listen(PORT, () => {
   console.log(`  skej Backend Server`);
   console.log(`========================================`);
   console.log(`  URL:      http://localhost:${PORT}`);
-  console.log(`  Claude:   ${ANTHROPIC_API_KEY ? 'Enabled' : 'Disabled'}`);
+  console.log(`  OpenAI:   ${OPENAI_API_KEY ? 'Enabled' : 'Disabled'}`);
   console.log(`  Supabase: ${supabase ? 'Connected' : 'Not configured'}`);
   console.log(`========================================\n`);
 });

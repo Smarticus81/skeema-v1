@@ -39,7 +39,8 @@ export interface ScheduleItem {
 
 export const api = {
   async getSchedule(): Promise<ScheduleItem[]> {
-    const res = await fetch(`${API_URL}/schedule`);
+    // Add cache: 'no-store' to prevent Next.js from serving stale data
+    const res = await fetch(`${API_URL}/schedule`, { cache: 'no-store' });
     if (!res.ok) throw new Error("Failed to fetch schedule");
     const data = await res.json();
     return data.items;
@@ -51,7 +52,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
     });
-    if (!res.ok) throw new Error("Failed to save schedule");
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Save failed:", res.status, errorText);
+        throw new Error(`Failed to save schedule: ${res.status} ${errorText}`);
+    }
   },
 
   async checkBackendStatus(): Promise<boolean> {
